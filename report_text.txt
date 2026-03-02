@@ -1,0 +1,956 @@
+--- PAGE 0 ---
+Corso di Laurea Ingegneria Informatica:
+Artificial Intelligence & Machine Learning
+Progetto Information Retrivial e Natural Language
+Processing
+Comprendere, Valutare e Generare
+Umorismo con i LLM
+Professore:
+Andrea TagarelliCandidati:
+Jacopo Alfonso Le Pera
+Mat. 247521
+Silvio Emanuele Liparoti
+Mat. 242663
+ANNO ACCADEMICO 24/25
+--- PAGE 1 ---
+Indice
+Indice 1
+1 Introduzione e obiettivi del progetto 3
+1.1 Problematiche affrontate . . . . . . . . . . . . . . . . . . . . . . 3
+1.1.1 Motivazioni alla base del problema . . . . . . . . . . . . 5
+Possibili soluzioni per il caso d’uso . . . . . . . . . . . . 6
+1.2 Architettura complessiva del progetto . . . . . . . . . . . . . . . 7
+2 Dati utilizzati e annotazione automatica 10
+2.1 Dataset scelti . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+Processing dei dati . . . . . . . . . . . . . . . . . . . . . 11
+2.2 Produzione di dati annotati attraverso tecniche self-supervised . 11
+2.2.1 Definizione delle categorie di umorismo . . . . . . . . . . 11
+2.2.2 Mixture di LLM per la regressione su categorie di umo-
+rismo . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+2.2.3 Modelli utilizzati . . . . . . . . . . . . . . . . . . . . . . 12
+Funzione di classificazione delle battute: prompting e
+parsing dei risultati in JSON . . . . . . . . . . 13
+2.2.4 Definizione di una misura di consenso . . . . . . . . . . . 15
+Metrica LPR . . . . . . . . . . . . . . . . . . . . . . . . 15
+2.2.5 Valutazione qualitativa degli score ottenuti . . . . . . . . 18
+Confronto con il modello Llama3 . . . . . . . . . . . . . 18
+3 Finetuning di un modello BERT-based per la regressione 20
+3.1 Scelta del modello BERT . . . . . . . . . . . . . . . . . . . . . . 20
+3.1.1 Problematiche relative all’ambiente di esecuzione . . . . 20
+3.2 Preprocessing dei dati . . . . . . . . . . . . . . . . . . . . . . . 21
+1
+--- PAGE 2 ---
+3.3 Architettura del regressore ALBERT . . . . . . . . . . . . . . . 21
+3.4 Addestramento del modello . . . . . . . . . . . . . . . . . . . . 22
+3.4.1 Strategia di training . . . . . . . . . . . . . . . . . . . . 22
+3.4.2 Analisi qualitativa . . . . . . . . . . . . . . . . . . . . . 23
+3.5 Salvataggio e utilizzo del modello . . . . . . . . . . . . . . . . . 27
+4 Finetuning della generazione tramite Reinforcement Learning 28
+4.1 Architettura del sistema . . . . . . . . . . . . . . . . . . . . . . 28
+4.2 Definizione della funzione di ricompensa . . . . . . . . . . . . . 29
+4.2.1 Parametri utilizzati per il Reward Model . . . . . . . . . 30
+4.3 Configurazione del fine-tuning: LoRA e PPO . . . . . . . . . . . 30
+4.4 Training e Prompting . . . . . . . . . . . . . . . . . . . . . . . . 32
+4.5 Risultati dell’addestramento . . . . . . . . . . . . . . . . . . . . 34
+4.6 Confronto RL vs modello base . . . . . . . . . . . . . . . . . . . 35
+5 Conclusioni e sviluppi fututri 37
+6 Demo del sistema 39
+6.1 Modalit` a di utilizzo . . . . . . . . . . . . . . . . . . . . . . . . . 39
+6.2 Esempi di interazione . . . . . . . . . . . . . . . . . . . . . . . . 40
+6.3 Accesso alla demo . . . . . . . . . . . . . . . . . . . . . . . . . . 41
+2
+--- PAGE 3 ---
+Capitolo 1
+Introduzione e obiettivi del
+progetto
+Negli ultimi anni, i Large Language Models (LLM) hanno rivoluzionato il pa-
+norama dell’elaborazione del linguaggio naturale, mostrando una straordinaria
+capacit` a di generare testi coerenti, creativi e dal contesto rilevante. Tutta-
+via, una delle sfide ancora aperte ` e la comprensione dell’umorismo, una forma
+di comunicazione estremamente complessa, fortemente influenzata da fattori
+culturali, soggettivi e linguistici.
+Il presente lavoro si propone di esplorare la capacit` a dei LLM di generare bat-
+tute, analizzando la qualit` a dell’umorismo prodotto e cercando di migliorarne
+l’efficacia attraverso un processo a pi` u fasi. L’umorismo, infatti, rappresenta
+un terreno interessante sia dal punto di vista linguistico sia da quello cognitivo:
+generare una battuta efficace richiede il riconoscimento di schemi, ambiguit` a,
+giochi di parole e spesso la gestione di contenuti potenzialmente controversi.
+1.1 Problematiche affrontate
+Uno degli aspetti pi` u affascinanti, ma al tempo stesso problematici, dei mo-
+delli linguistici di grandi dimensioni (LLM) ` e che a differenza di compiti pi` u
+strutturati come la classificazione o la traduzione, la generazione umoristica
+richiede un livello di comprensione semantica, pragmatica e culturale che va
+oltre la semplice manipolazione sintattica del linguaggio.
+3
+--- PAGE 4 ---
+Nel nostro progetto abbiamo deciso di concentrare l’attenzione su questo limi-
+te specifico: la difficolt` a dei LLM nel produrre battute realmente divertenti,
+originali e coerenti con le richieste dell’utente. Nonostante la loro competenza
+nel generare frasi grammaticalmente corrette, i modelli spesso falliscono nel
+cogliere le sfumature tipiche dell’umorismo umano, generando contenuti poco
+divertenti, privi di senso, e in alcuni casi, rifiutandosi del tutto di rispondere
+a certi prompt che possono risultare eticamente scorretti.
+Per evidenziare concretamente queste difficolt` a, abbiamo condotto diversi test
+empirici interagendo direttamente con modelli linguistici in stile chat. In alcuni
+casi, i modelli hanno generato battute forzate, grammaticalmente corrette ma
+prive di impatto umoristico; in altri, hanno evitato di rispondere per via di
+restrizioni legate alla sicurezza o all’allineamento etico.
+Figura 1.1: Esempi di battute generate da un LLM in risposta a richieste di
+generazione di contenuto umoristico.
+Figura 1.2: Esempi aggiuntivi: generazione umoristica con risultati discutibili.
+4
+--- PAGE 5 ---
+Come mostrano gli esempi in Figura 1.1 e Figura 1.2, i LLM, se interrogati con
+prompt generici come ”Genera una battuta originale” o”Tell me a joke you
+came up with” , producono spesso battute basate su giochi di parole elementari,
+prevedibili o gi` a sentiti. Ad esempio, si nota il ricorso a colmi classici (“qual ` e
+il colmo per un elettricista...”), oggetti parlanti (“il frigorifero che d` a consigli
+di vita”) e metafore molto semplici (“una trappola per topi”).
+Bench´ e formalmente e semanticamente corrette, queste battute risultano ge-
+neralmente poco incisive dal punto di vista comico e mostrano un pattern
+ripetitivo nella struttura: una domanda seguita da una risposta prevedibile e
+priva di reale incongruit` a semantica o sorpresa.
+Questo comportamento evidenzia un problema chiave soprattutto per quanto
+riguarda la nostra lingua madre, l’italiano, ma anche nella lingua inglese i risul-
+tati non sono quelli sperati: i modelli non possiedono una vera comprensione
+dell’umorismo, ma applicano pattern appresi da grandi corpus testuali, senza
+una reale valutazione qualitativa. Questo limite ha motivato lo sviluppo del
+nostro sistema, volto a fornire strumenti per la categorizzazione, valutazione e
+ottimizzazione della comicit` a generata.
+1.1.1 Motivazioni alla base del problema
+Le difficolt` a che i modelli linguistici incontrano nella generazione umoristica
+non sono casuali, ma derivano dalla natura stessa del loro funzionamento. I
+LLM non possiedono una comprensione semantica profonda, n´ e una coscienza
+culturale o un’intuizione sociale: essi apprendono correlazioni statistiche tra
+parole osservando enormi quantit` a di dati testuali. In altre parole, non “ca-
+piscono” realmente l’umorismo, ma ne imitano la forma sulla base di schemi
+ricorrenti.
+Questo implica che, se una battuta o una struttura comica non ` e sufficien-
+temente rappresentata nei dati di addestramento, ` e probabile che il modello
+non riesca a riprodurla o valutarla correttamente. Al contrario, tende a re-
+plicare stereotipi o pattern visti molte volte, senza senso critico n´ e sensibilit` a
+contestuale. Ne risulta una comicit` a superficiale, talvolta ripetitiva, spesso
+prevedibile e poco creativa.
+5
+--- PAGE 6 ---
+Oltre alle limitazioni dei modelli, va considerata la complessit` a intrinseca del-
+l’umorismo stesso. L’umorismo ` e infatti una forma di comunicazione non ra-
+zionale, altamente soggettiva e fortemente influenzata dal contesto culturale,
+linguistico e personale. Ci` o che risulta divertente per un individuo potrebbe
+risultare banale, incomprensibile o addirittura offensivo per un altro.
+Questa variabilit` a rende estremamente difficile la formalizzazione e l’auto-
+matizzazione dell’umorismo. Mancano metriche oggettive e universalmente
+accettate per valutarne la qualit` a, e non esistono benchmark standardizza-
+ti che possano guidare l’addestramento o la validazione di modelli generativi
+in questo ambito. Di conseguenza, risulta complesso sia valutare la comicit` a
+di una battuta generata, sia fornire una ricompensa efficace per algoritmi di
+apprendimento basati su rinforzo.
+Questa distanza tra “simulazione” e “comprensione”, e tra “output testuale”
+e “effetto percepito”, rappresenta la motivazione principale del nostro lavoro:
+se i LLM non sanno valutare l’umorismo che generano, dobbiamo fornire loro
+un sistema di supporto che permetta di misurarlo, interpretarlo e, se possibi-
+le, correggerlo. Solo cos` ı possiamo costruire un processo iterativo di miglio-
+ramento della comicit` a, attraverso metriche, modelli regressori e tecniche di
+ottimizzazione mirata.
+Possibili soluzioni per il caso d’uso
+In un contesto cos` ı complesso e soggettivo come quello dell’umorismo, non
+sempre ` e possibile definire parametri oggettivi e universali per valutarne la
+qualit` a. L’assenza di metriche standard rende difficile costruire un framework
+rigoroso per l’addestramento e la valutazione dei modelli generativi, special-
+mente in compiti dove l’obiettivo ` e produrre contenuti divertenti, creativi o
+ironici.
+Tuttavia, esistono approcci alternativi che possono fornire una stima indiretta
+o parziale della presenza di elementi umoristici. Uno di questi consiste nell’u-
+tilizzare risorse linguistiche come keyword umoristiche , cio` e insiemi di parole
+frequentemente associate a battute, giochi di parole, doppi sensi o sarcasmo.
+Un altro approccio si basa sugli embeddings contestuali , sfruttando le rappre-
+6
+--- PAGE 7 ---
+sentazioni dense dei testi per individuare similarit` a con battute etichettate o
+esempi pre-classificati.
+Nel nostro lavoro abbiamo scelto di affrontare il problema proponendo una
+metrica personalizzata che possa fungere da surrogato oggettivo in assenza di
+annotazioni manuali affidabili. Tale metrica, da noi sviluppata, si basa sul
+concetto di consenso tra modelli e sar` a introdotta nei capitoli successivi. Essa
+prende il nome di LPR e costituisce un elemento centrale nel nostro sistema
+di valutazione automatica, proponendosi come proxy per la valutazione
+umana .
+1.2 Architettura complessiva del progetto
+Alla luce delle problematiche evidenziate e delle caratteristiche salienti dell’u-
+morismo, abbiamo progettato un’architettura modulare in grado di affrontare
+il problema su pi` u livelli, con l’obiettivo di migliorare la generazione comica
+attraverso una pipeline composta da valutazione, modellazione e ottimizzazio-
+ne.
+Il primo componente del sistema ` e una mixture di modelli linguistici ,
+basata su tre LLM open-source (LLaMA, Mistral e Gemma), utilizzata per
+annotare automaticamente un dataset di battute secondo sei categorie umori-
+stiche da noi definite e che verranno introdotte nella prossima sezione. Ogni
+modello produce una propria distribuzione di punteggi per ciascuna categoria,
+permettendo cos` ı una classificazione multilabel delle battute.
+Successivamente, viene introdotto un meccanismo di consenso tra modelli ,
+finalizzato a ridurre la variabilit` a tra output e ad aumentare la coerenza delle
+etichette prodotte. Questo meccanismo si concretizza in una metrica proprie-
+taria, da noi sviluppata, denominata LPR , che verr` a descritta nel dettaglio
+nei capitoli successivi.
+Una volta ottenuto un dataset annotato in modo coerente, il passo successivo
+` e la costruzione di un modello regressore capace di prevedere automatica-
+mente i punteggi associati a ciascuna categoria, a partire dal solo testo della
+battuta. Per questo scopo abbiamo utilizzato il modello ALBERT , noto per
+7
+--- PAGE 8 ---
+essere un modello BERT-like leggero e con buona capacit` a di generalizzare in
+contesti a risorse limitate.
+Infine, le informazioni ottenute nei passaggi precedenti vengono sfruttate per
+guidare il miglioramento della generazione di un LLM (nello specifico, Mistral),
+attraverso una fase di fine-tuning tramite Reinforcement Learning . In
+particolare, adottiamo la tecnica PPO (Proximal Policy Optimization), co-
+struendo una funzione di ricompensa che premia la generazione di battute
+capaci di ottenere punteggi elevati in almeno una delle categorie umoristiche
+predefinite.
+Questa architettura qui raffigurata ci consente di combinare modelli di genera-
+zione, modelli di valutazione e strategie di ottimizzazione in un’unica pipeline
+coerente, finalizzata al miglioramento della qualit` a dell’umorismo prodotto in
+modo automatico.
+Figura 1.3: Pipeline di progetto
+8
+--- PAGE 9 ---
+Dunque, la struttura della pipeline segue queste tre fasi operative: si parte
+dalla categorizzazione automatica, si passa per la modellazione degli score tra-
+mite regressione, e si conclude con l’ottimizzazione della generazione tramite
+reinforcement learning. Le conclusioni finali forniscono una sintesi dei risulta-
+ti, un’analisi delle criticit` a incontrate e alcune proposte per possibili sviluppi
+futuri.
+9
+--- PAGE 10 ---
+Capitolo 2
+Dati utilizzati e annotazione
+automatica
+2.1 Dataset scelti
+Per l’addestramento e la valutazione dei nostri modelli abbiamo scelto di utiliz-
+zare il dataset Short Jokes1, una raccolta pubblicamente disponibile su Kaggle
+di oltre 200.000 battute in lingua inglese e di facile lettura poich` e composto
+unicamente dalle colonne ID e joke. Il dataset si presta molto bene allo stu-
+dio computazionale dell’umorismo, poich´ e contiene battute di varia natura e
+complessit` a, in forma breve e autoconclusiva. Queste caratteristiche permet-
+tono una valutazione relativamente isolata del contenuto comico, senza dover
+gestire contesto narrativo esteso.
+Proprio per questo motivo abbiamo scelto di non includere nella trattazione
+il dataset Jester2; sebbene lo avessimo inizialmente preso in considerazione,
+abbiamo scelto di non includerlo nella pipeline principale per motivi lega-
+ti alla qualit` a e struttura dei dati. Il dataset Jester , riformulato anche su
+Hugging Face in versione pre-processata3, presenta numerose colonne interes-
+santi — come , rating ,joke reasoning steps llama70b ,mean score user ,
+stdev score user ,Zrating — che teoricamente lo renderebbero adatto a
+1https://www.kaggle.com/datasets/abhinavmoudgil95/short-jokes
+2https://www.kaggle.com/datasets/vikashrajluhaniwal/
+jester-17m-jokes-ratings-dataset
+3https://huggingface.co/datasets/SeppeV/rated_jokes_dataset_from_jester
+10
+--- PAGE 11 ---
+studi su preferenze umoristiche personalizzate. Tuttavia, un’analisi prelimi-
+nare ha mostrato che il dataset ` e altamente ridondante: contiene circa 1.76
+milioni di righe, ma queste corrispondono a soli 140 testi di barzellette uniche,
+ognuna valutata pi` u volte da centinaia di utenti. Questa densit` a di votazioni,
+pur utile per esperimenti su modelli di preferenza o collaborative filtering, non
+si adatta bene al nostro obiettivo, ovvero la categorizzazione semantica auto-
+matica su vasta scala. Per questo motivo, abbiamo preferito optare per Short
+Jokes , che ci garantisce un alto numero di esempi unici, maggiore variet` a di
+stile e struttura, e una maggiore compatibilit` a con i modelli di classificazione
+multilabel e regressione che abbiamo sviluppato. Non escludiamo, per` o, che
+il dataset Jester potrebbe essere integrato in futuro per raffinare la fase di
+training del reward model.
+Processing dei dati
+Dopo aver caricato il dataset shortjokes.csv abbiamo rimosso le battute con-
+tenenti valori nulli o non testuali e filtrato il dataset in base alla lunghezza,
+mantenendo solo le battute comprese tra 25 e 250 caratteri. Questo range con-
+sente di escludere da un lato battute troppo corte (che potrebbero essere poco
+informative) e dall’altro lato battute troppo lunghe (pi` u simili a brevi storie o
+aneddoti). Dal dataset cos` ı ripulito, ` e stato poi campionato un sottoinsieme
+di 10.000 battute da sottoporre all’annotazione automatica.
+2.2 Produzione di dati annotati attraverso tec-
+niche self-supervised
+2.2.1 Definizione delle categorie di umorismo
+Abbiamo definito sei categorie principali di umorismo, ciascuna delle quali
+rappresenta un tipo distinto di comicit` a:
+•Wordplay : giochi di parole, doppi sensi.
+•Absurdity : situazioni paradossali o illogiche.
+•CulturalReference : riferimenti a contesti pop, storici, o sociali.
+11
+--- PAGE 12 ---
+•Relatable : situazioni quotidiane con cui ` e facile identificarsi.
+•Offensive : contenuti provocatori o scorretti.
+•EdgyContent : battute di tipo dark-humor, borderline, potenzialmente
+ambigue.
+La scelta di queste sei categorie nasce dal desiderio di coprire un ampio spettro
+dell’umorismo, evitando sovrapposizioni e cercando una suddivisione chiara
+e mutuamente esclusiva. Questo consente una classificazione multilabel pi` u
+pulita e una regressione pi` u interpretabile.
+2.2.2 Mixture di LLM per la regressione su categorie di
+umorismo
+Abbiamo impiegato tre modelli LLM open-source — LLaMA 3, Mistral e Gem-
+ma — per generare in modo automatico punteggi di appartenenza alle sei ca-
+tegorie umoristiche. A ciascun modello ` e stato fornito un prompt che chiede
+di valutare la battuta per ogni categoria su una scala da 0 (assente) a 1 (molto
+presente). L’idea alla base di questa strategia ` e sfruttare la complementarit` a
+tra i modelli per generare una distribuzione pi` u robusta, e ottenere cos` ı un
+sistema di etichettatura automatica pi` u affidabile rispetto all’uso di un singolo
+modello.
+2.2.3 Modelli utilizzati
+Come gi` a accennato, per la fase di annotazione automatica abbiamo scelto tre
+modelli open-source di tipo instruction-following pre-addestrati:
+•mistralai/Mistral-7B-Instruct-v0.24
+•meta-llama/Meta-Llama-3-8B-Instruct5
+•google/gemma-7b-it6
+4https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2
+5https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
+6https://huggingface.co/google/gemma-7b-it
+12
+--- PAGE 13 ---
+Tutti i modelli sono stati utilizzati e gestiti tramite pipeline Hugging Face Tran-
+sformers. La scelta di adottare modelli eterogenei ci ha permesso di confrontare
+e mediare valutazioni soggettive da parte di architetture diverse, migliorando
+la robustezza della classificazione multilabel.
+I modelli sono stati chiamati in modo iterativo su ciascuna battuta, ricevendo
+in input un prompt strutturato per restituire uno score numerico da 0 a 10 per
+ciascuna categoria umoristica.
+Funzione di classificazione delle battute: prompting e parsing dei
+risultati in JSON
+Di seguito viene riportata la funzione di classificazione, punto cardine del
+nostro primo notebook Kaggle:
+13
+--- PAGE 14 ---
+Figura 2.1: Funzione di classificazione con scoring JSON restituito dal modello
+La funzione riportata nella Figura 2.1 rappresenta il nucleo operativo della
+pipeline di annotazione. Essa prende in input un dataframe di battute, una
+pipeline di generazione basata su un modello LLM, e un identificatore del
+modello.
+Per ogni battuta viene costruito dinamicamente un prompt dettagliato che
+descrive le sei categorie umoristiche da valutare. Il modello ` e quindi chiamato
+a restituire, in formato JSON, uno score da 0 a 10 per ciascuna categoria. Il
+14
+--- PAGE 15 ---
+risultato viene poi inserito nel dataframe, creando colonne separate per ogni
+categoria e per ogni modello.
+L’approccio presenta diversi vantaggi: ` e scalabile, interpretabile e facilmente
+estensibile ad altri modelli o categorie. Tuttavia, essendo basato sull’output
+libero del modello, richiede un parsing robusto e include meccanismi di gestione
+degli errori per garantire affidabilit` a nel processo di raccolta dati.
+2.2.4 Definizione di una misura di consenso
+Abbiamo introdotto la metrica LPR (Le Pera - Liparoti), che rappresenta una
+misura sintetica del consenso tra modelli rispetto alla presenza di almeno una
+categoria umoristica significativa.
+Dato uno score multilabel per ogni modello, la LPR valuta il numero di cate-
+gorie con punteggio superiore a una soglia (es. 0.6) e la coerenza tra i modelli
+nel segnalarle. Questa metrica funge da surrogato della qualit` a percepita, ed ` e
+impiegata successivamente come base per l’addestramento del reward model.
+Metrica LPR
+La metrica LPR (Le Pera - Liparoti) da noi introdotta restituisce un uni-
+co punteggio consensuale per ogni categoria di umorismo, calcolato a partire
+dalle valutazioni assegnate da tre modelli LLM (LLaMA3, Mistral, Gemma).
+L’obiettivo ` e ottenere una stima robusta anche in presenza di disaccordi tra i
+modelli, premiando i casi di coerenza e penalizzando le divergenze estreme.
+Il concetto chiave alla base della metrica ` e quello di disaccordo controllato .
+Supponiamo che due modelli assegnino punteggi simili per una certa catego-
+ria (ad esempio 7 e 6), mentre il terzo assegna un valore molto distante (ad
+esempio 1). In questo caso, si rileva una deviazione massima significativa
+tra i punteggi. La metrica valuta tutte le coppie di modelli e, se almeno due
+di essi sono in accordo accettabile — ovvero la loro differenza rientra entro una
+soglia predefinita chiamata max deviation (tipicamente fissata a 2) — allora
+si procede con una media pesata limitata solo ai modelli coerenti tra loro.
+Pi` u nel dettaglio, le casistiche si articolano nei seguenti punti:
+15
+--- PAGE 16 ---
+1.Accordo: Media ponderata. In caso di totale accordo tra i modelli lo
+score risultante ` e rappresentato dalla media ponderata, basata su valu-
+tazioni empiriche di qualit` a (benchmark): LLaMA3 (0.5), Mistral (0.3),
+Gemma (0.2).
+2.Disaccordo parziale: consenso sui modelli in accordo. Per ogni
+categoria: se almeno due modelli hanno una differenza ≤max deviation ,
+si considera che esista un accordo e si calcola la media pesata su quei
+modelli.
+3.Disaccordo forte : se nessuna coppia di modelli rispetta la soglia di
+coerenza, si assume che il consenso manchi. In questo caso, si ricorre al
+punteggio fornito dal modello con il peso pi` u alto (es. LLaMA3),
+considerato pi` u affidabile.
+La soglia max deviation consente di regolare la tolleranza al disaccordo: valori
+alti rendono la metrica pi` u permissiva e portano pi` u frequentemente al calcolo
+della media tra tutti i modelli; valori bassi, invece, privilegiano l’affidabilit` a
+del singolo modello dominante. Infine, ` e possibile personalizzare completa-
+mente il comportamento della metrica, ad esempio assegnando pesi uniformi
+o includendo una componente di casualit` a in caso di disaccordo totale.
+Di seguito, riportiamo l’implementazione completa della funzione compute lpr.
+16
+--- PAGE 17 ---
+Figura 2.2: Funzione di calcolo dello score LPR per una singola categoria
+La funzione riportata nella Figura 2.2 implementa la metrica LPR, e si applica
+riga per riga al dataframe contenente le valutazioni prodotte dai tre modelli.
+Per ogni categoria, essa considera le valutazioni e calcola una media ponderata
+in base ai pesi assegnati, tenendo conto della tolleranza definita dal parametro
+maxdeviation .
+In presenza di disaccordo limitato, il punteggio finale riflette un compromesso
+tra i modelli. In caso contrario, viene applicato un filtro per escludere outlier,
+oppure si privilegia il modello considerato pi` u affidabile (LLaMA3), garantendo
+cos` ı un output robusto anche in contesti rumorosi.
+Questo approccio ha permesso di ottenere score pi` u stabili e credibili rispetto
+a una semplice media aritmetica, e ha rappresentato la base per l’etichettatura
+17
+--- PAGE 18 ---
+finale usata nelle fasi successive del progetto.
+2.2.5 Valutazione qualitativa degli score ottenuti
+L’analisi qualitativa delle predizioni mostra che le valutazioni ottenute tramite
+la mixture di LLM riflettono con buona coerenza il contenuto della battuta. In
+particolare, battute provocatorie o con riferimenti culturali espliciti ottengono
+punteggi alti nelle categorie Offensive e CulturalReference, mentre giochi di
+parole semplici tendono a emergere chiaramente nella categoria Wordplay.
+Questo conferma che, pur in assenza di supervisione umana, i modelli rie-
+scono a catturare dimensioni differenti del comico attraverso un processo di
+autoannotazione.
+Confronto con il modello Llama3
+Come caso d’esempio significativo per approfondire l’efficacia della metrica
+proposta, abbiamo analizzato una battuta su Adolf Hitler presente nel dataset,
+contenente un gioco di parole che mescola riferimenti storici e black humour.
+Il testo della battuta ` e il seguente:
+What was Hitler’s favourite aquatic animal? Adolfin.
+Di seguito vengono riportati gli score LPR per le categorie e quelli assegnati
+dai tre modelli in formato tabellare
+Modello Edgy Content Cultural Reference Wordplay Absurdity Relatable Offensive Humor
+LPR 9 8 1 7 0 9
+LLaMA 0 8 9 0 0 0
+Mistral 10 0 1 8 0 9
+Gemma 8 9 0 6 2 8
+Tabella 2.1: Score per categoria della battuta analizzata
+Questo confronto mette in evidenza il valore della metrica LPR basata sul con-
+senso: rispetto ai modelli Gemma e Mistral, LPR riconosce in modo pi` u equi-
+librato sia il riferimento storico, sia il gioco di parole tra “dolphin” e “Adolf”,
+riflettendoli in punteggi coerenti; anche in confronto al modello LLaMA3, che
+nei benchmark risulta essere il pi` u performante tra quelli scelti, LPR dimostra
+una maggiore sensibilit` a nel cogliere il contenuto offensivo e gli elementi di
+dark humour presenti nella battuta, includendo inoltre la componente surreale
+18
+--- PAGE 19 ---
+tipica della categoria “Absurdity”. Questo suggerisce che la metrica LPR rie-
+sce a catturare sfumature del contenuto comico che i modelli singoli tendono
+a trascurare.
+19
+--- PAGE 20 ---
+Capitolo 3
+Finetuning di un modello
+BERT-based per la regressione
+3.1 Scelta del modello BERT
+3.1.1 Problematiche relative all’ambiente di esecuzione
+Nel contesto della nostra pipeline, uno degli obiettivi principali ` e la possibi-
+lit` a di ottenere una previsione automatica dei punteggi umoristici (annotati
+precedentemente con i LLM) a partire dal solo testo della battuta. Per que-
+sto motivo si ` e deciso di ricorrere a un modello Transformer pre-addestrato,
+fine-tunato come regressore multilabel.
+Tra le diverse scelte disponibili, i vincoli pratici legati all’ambiente di esecu-
+zione (in particolare l’utilizzo della piattaforma Kaggle, dotata di GPU con
+memoria limitata) hanno reso necessario l’uso di un modello leggero. La scelta
+` e ricaduta su ALBERT-base-v21, una variante di BERT che presenta pesi
+condivisi tra i layer e una riduzione della dimensione degli embedding.
+ALBERT ` e in grado di mantenere buone performance su compiti di NLP man-
+tenendo al tempo stesso un ingombro computazionale ridotto. Si ` e quindi
+rivelato adatto a operare in ambienti low-resource, senza sacrificare significa-
+tivamente la capacit` a di rappresentare il contenuto semantico delle battute.
+1https://huggingface.co/albert-base-v2
+20
+--- PAGE 21 ---
+3.2 Preprocessing dei dati
+Per il training del regressore, ` e stato utilizzato il dataset da noi estratto attra-
+verso le procedure precedentemente descritte aggregated scores LPR10000.csv ,
+contenente 10.000 battute annotate automaticamente da tre modelli LLM
+(LLaMA3, Mistral, Gemma) mediante la metrica di consenso LPR.
+I punteggi presenti nelle colonne relative alle sei categorie umoristiche sono
+stati:
+•ripuliti (rimozione di spazi nei nomi delle colonne),
+•filtrati (rimozione dei record privi di testo o di punteggi validi).
+Inoltre:
+•Le battute sono state tokenizzate utilizzando AutoTokenizer2compati-
+bile con ALBERT.
+•`E stato applicato padding automatico e generata la attention mask , in
+linea con l’input richiesto dai modelli Transformer.
+•Gli score di ciascuna categoria sono stati normalizzati nel range [0, 1].
+Questa normalizzazione si ` e resa necessaria per adattarsi all’output della fun-
+zione Sigmoid , che produce valori compresi tra 0 e 1. Il dataset ` e stato poi
+suddiviso in train set etest set , mantenendo una proporzione 80/20 e
+garantendo la presenza bilanciata di tutte le categorie.
+3.3 Architettura del regressore ALBERT
+Il modello di regressione sviluppato si basa sull’utilizzo di ALBERT come
+encoder testuale. Per ciascuna battuta, il modello produce un embedding del
+token speciale [CLS], che viene poi elaborato da una semplice rete neurale
+fully-connected.
+L’architettura pu` o essere cos` ı descritta:
+2https://huggingface.co/docs/transformers/model_doc/auto
+21
+--- PAGE 22 ---
+•Encoder →ALBERT: produce una rappresentazione vettoriale della
+battuta (dimensione ∼768).
+•Regressore neurale :
+–Linear (768→128),
+–ReLU ,
+–Linear (128→6),
+–Sigmoid→output ∈[0,1].
+Ogni uscita corrisponde a una delle sei categorie umoristiche. I valori ottenuti
+sono poi moltiplicati per 10 per riportare il punteggio nel dominio originale.
+L’approccio scelto, pur essendo semplice, ha il vantaggio di sfruttare la potenza
+espressiva dei Transformer per l’estrazione delle feature semantiche, delegando
+al regressore solo il mapping finale.
+3.4 Addestramento del modello
+3.4.1 Strategia di training
+L’addestramento ` e stato svolto per 5 epoche, con batch size pari a 16 e lear-
+ning rate fissato a 2 ·10−5. Il modello ` e stato ottimizzato tramite l’algorit-
+moAdamW3, una variante del classico ottimizzatore Adam che introduce una
+regolarizzazione L2 sui pesi (weight decay).
+Come funzione obiettivo ` e stata impiegata la MSELoss4tra i punteggi reali e
+quelli predetti, in quanto adatta a problemi di regressione continua. L’adde-
+stramento ` e stato implementato manualmente in PyTorch, iterando sui batch
+del dataset e aggiornando i pesi in modo esplicito.
+Il training ha mostrato una convergenza stabile e regolare gi` a a partire dalle
+prime epoche.
+Per la valutazione delle performance ` e stato utilizzato il test set. Per ciascuna
+delle sei categorie, sono state calcolate due metriche fondamentali:
+3https://huggingface.co/docs/transformers/main_classes/optimizer_
+schedules#transformers.AdamW
+4https://pytorch.org/docs/stable/generated/torch.nn.MSELoss.html
+22
+--- PAGE 23 ---
+•Mean Squared Error (MSE) – errore quadratico medio
+•Mean Absolute Error (MAE) – errore assoluto medio
+I risultati ottenuti sono riassunti di seguito (valori esemplificativi):
+Wordplay →MSE: 0.0124, MAE: 0.082
+Relatable →MSE: 0.0157, MAE: 0.095
+...
+3.4.2 Analisi qualitativa
+Oltre alle metriche aggregate, ` e stato condotto un confronto qualitativo tra
+i valori predetti dal modello e le etichette ottenute tramite metrica LPR. In
+Figura 3.1, vengono mostrati i grafici Predicted vs Ground Truth per le sei
+categorie umoristiche:
+Figura 3.1: Scatter plot Prediction vs Ground Truth per le categorie
+Dall’osservazione dei grafici, emerge una prestazione variegata del modello.
+Alcune categorie, come Relatable eOffensive Humor , mostrano una discreta
+aderenza alla diagonale ideale (linea rossa), indicando una certa capacit` a di ap-
+prendere le strutture umoristiche pi` u esplicite o frequenti. Tuttavia, categorie
+pi` u sottili o linguisticamente complesse, come Wordplay eCultural Reference ,
+evidenziano una dispersione significativa, con numerose predizioni distanti dal
+valore corretto.
+23
+--- PAGE 24 ---
+Questo comportamento pu` o essere attribuito a vari fattori. Innanzitutto, l’u-
+morismo ` e notoriamente difficile da modellare in quanto soggettivo, implicito
+e culturalmente dipendente. In secondo luogo, il compito affidato al modello
+` e particolarmente ambizioso: prevedere score continui, derivati da un’aggre-
+gazione automatica fra tre modelli LLM, usando una rete relativamente com-
+patta come ALBERT. Questa combinazione introduce inevitabilmente rumore
+nel dataset e aumenta la complessit` a del problema di regressione.
+Nonostante queste difficolt` a, il modello ha mostrato coerenza in alcune ca-
+tegorie e buone tendenze di generalizzazione, specialmente nei casi in cui la
+relazione tra testo e categoria era pi` u evidente. Questo suggerisce che l’ap-
+proccio ` e valido come punto di partenza, ma pu` o essere migliorato con modelli
+pi` u espressivi, supervisioni pi` u pulite o metriche di consenso pi` u sofisticate.
+Per valutare il comportamento del regressore in situazioni complesse, abbiamo
+analizzato qualitativamente alcune predizioni su battute selezionate. Oltre
+alle metriche aggregate, questa valutazione permette di osservare il grado di
+coerenza e sensibilit` a semantica del modello su esempi reali. Si riportano vari
+esempi testuali particolarmente rappresentativi:
+Joke 1
+“If a stork brings white babies and a crow brings black babies, what
+brings no babies? A little Swallow.”
+EdgyContent_LPR: GT = 0.00 | Pred = 0.42
+CulturalReference_LPR: GT = 0.10 | Pred = 0.07
+Wordplay_LPR: GT = 0.90 | Pred = 0.07
+Absurdity_LPR: GT = 0.80 | Pred = 0.33
+Relatable_LPR: GT = 0.00 | Pred = 0.13
+OffensiveHumor_LPR: GT = 0.00 | Pred = 0.60
+In questo caso, il modello fallisce nel cogliere la vera natura comica della bat-
+tuta. La presenza di un doppio senso (“swallow” come uccello ma anche come
+atto sessuale) avrebbe dovuto condurre a un punteggio alto in Wordplay e
+Absurdity , ma entrambi sono fortemente sottostimati. Viene comunque attri-
+buito un punteggio elevato alla categoria OffensiveHumor , catturando quindi
+24
+--- PAGE 25 ---
+in qualche misura il contenuto esplicito della battuta, nonostante non fosse
+stato appurato dalla metrica di riferimento. L’output dimostra dunque una
+difficolt` a del modello a gestire battute con significati impliciti o doppi.
+Joke 2
+“People are always mistaking things I say as racist. The other day,
+this guy thought I called him a ’sand nigger.’ But what I said was,
+’get out of the sand, nigger. Volleyball is a white man’s sport.’ ”
+EdgyContent_LPR: GT = 0.90 | Pred = 0.84
+CulturalReference_LPR: GT = 0.50 | Pred = 0.48
+Wordplay_LPR: GT = 0.00 | Pred = 0.09
+Absurdity_LPR: GT = 0.00 | Pred = 0.08
+Relatable_LPR: GT = 0.00 | Pred = 0.08
+OffensiveHumor_LPR: GT = 1.00 | Pred = 0.91
+Questa battuta estremamente provocatoria contiene un linguaggio razzista ed
+esplicitamente offensivo. In questo caso, il modello ha risposto correttamente,
+riconoscendo correttamente le componenti Edgy Content eOffensive Humor ,
+dimostrando una certa sensibilit` a nei confronti di contenuti eticamente pro-
+blematici. Il punteggio vicino a zero nelle categorie meno pertinenti conferma
+un comportamento prudente e coerente. Questo esempio mette in luce uno
+dei punti di forza del modello: la capacit` a di riconoscere elementi forti e ben
+marcati, specie quando le categorie semantiche sono chiare e inequivocabili.
+Conclusioni qualitative L’analisi conferma che il modello tende a compor-
+tarsi meglio su battute “esplicite” o chiaramente categorizzabili (es. contenuti
+offensivi), mentre fatica su forme di umorismo pi` u sottili, implicite o lingui-
+sticamente ambigue. Le difficolt` a principali emergono nel riconoscimento del
+Wordplay , dove l’informazione semantica viene trasmessa in modo indiretto o
+attraverso giochi di significato.
+Joke 7
+“My stalker twisted his ankle, so now I have to walk slower for 2-3
+weeks.”
+25
+--- PAGE 26 ---
+EdgyContent_LPR: GT = 0.00 | Pred = 0.74
+CulturalReference_LPR: GT = 0.00 | Pred = 0.10
+Wordplay_LPR: GT = 0.00 | Pred = 0.11
+Absurdity_LPR: GT = 0.00 | Pred = 0.59
+Relatable_LPR: GT = 0.90 | Pred = 0.18
+OffensiveHumor_LPR: GT = 0.00 | Pred = 0.53
+Il modello ha assegnato punteggi elevati ad aspetti come l’ Offensive Humor o
+l’Absurdity , pur in assenza di annotazioni in tal senso. Questo suggerisce una
+difficolt` a nella comprensione semantica del contenuto: parole come stalker po-
+trebbero aver innescato un’associazione erronea a contenuti “edgy” o offensivi,
+sebbene il tono sia ironico ma innocuo.
+Joke 8
+“I didn’t go through four years of grad school for this! (I didn’t go
+to grad school.)”
+EdgyContent_LPR: GT = 0.00 | Pred = 0.02
+CulturalReference_LPR: GT = 0.00 | Pred = 0.34
+Wordplay_LPR: GT = 0.80 | Pred = 0.03
+Absurdity_LPR: GT = 0.90 | Pred = 0.24
+Relatable_LPR: GT = 0.90 | Pred = 0.76
+OffensiveHumor_LPR: GT = 0.00 | Pred = 0.01
+In questo esempio il modello ha mostrato una buona sensibilit` a sul contenu-
+toRelatable , mentre ha completamente mancato la componente di Wordplay ,
+che era ben presente nella battuta originale (l’ironia del “finto” grad school).
+Questo evidenzia la difficolt` a del modello nel riconoscere sfumature comiche
+basate su ambiguit` a e contraddizione semantica.
+Conclusione In generale, il regressore ALBERT ha dimostrato buone capa-
+cit` a di generalizzazione nei casi pi` u lineari, ma fatica a cogliere le sfumature
+comiche pi` u sottili, specialmente quelle basate su giochi di parole, doppi sensi
+o costruzioni ironiche implicite.
+26
+--- PAGE 27 ---
+3.5 Salvataggio e utilizzo del modello
+Al termine del training, il modello ` e stato salvato in formato state dict per
+poter essere ricaricato successivamente e utilizzato nelle fasi di reinforcement
+learning.
+Inoltre, ` e stata definita una funzione predict scores che, dato un elenco di
+battute, produce per ciascuna un vettore di punteggi predetti, normalizzati
+su scala [0, 10]. Questo modulo ` e stato pensato come componente integrabile
+in una futura reward function basata su umorismo, usata per guidare la
+generazione.
+Modello salvato su /kaggle/working/joke_regressor_state_dict.pt
+27
+--- PAGE 28 ---
+Capitolo 4
+Finetuning della generazione
+tramite Reinforcement Learning
+In questo capitolo descriviamo l’ultima fase della pipeline: il miglioramento
+della generazione comica da parte del modello Mistral attraverso tecniche di
+Reinforcement Learning, in particolare l’algoritmo PPO1(Proximal Policy
+Optimization), combinato con l’adattamento efficiente dei pesi tramite Lo-
+RA2(Low-Rank Adaptation). L’obiettivo ` e spingere il modello generativo a
+produrre battute che ottengano punteggi alti in almeno una delle categorie
+umoristiche definite nei capitoli precedenti.
+4.1 Architettura del sistema
+Il sistema ` e composto da tre componenti principali:
+•Modello generativo : Mistral-7B-Instruct, finetunato con LoRA, che
+produce battute a partire da un prompt utente.
+•Modello valutatore : ALBERT, gi` a addestrato in precedenza per asse-
+gnare punteggi da 0 a 10 alle battute su ciascuna categoria.
+•Modello di riferimento : una copia congelata del modello base Mi-
+stral, utilizzata per calcolare la divergenza KL rispetto al nuovo modello
+addestrato.
+1https://arxiv.org/abs/1707.06347
+2https://arxiv.org/abs/2106.09685
+28
+--- PAGE 29 ---
+Questo approccio permette di ottimizzare la generazione, favorendo battute
+pi` u divertenti (secondo la valutazione del modello ALBERT) e mantenendo al
+contempo la coerenza con lo stile originario.
+4.2 Definizione della funzione di ricompensa
+Il reward ` e calcolato combinando tre aspetti:
+1. Un reward base se almeno una categoria supera una soglia prestabilita
+(base reward = 1.0). In caso di non raggiungimento della soglia per
+alcuna categoria, viene assegnato 0.
+2. Un bonus legato all’ intensit` a della categoria con punteggio massimo
+bonus score =max(scores) −threshold
+5
+Qui il bonus viene calcolato come score massimo ottenuto dalla risposta
+per una categoria qualsiasi, a cui viene sottratta la soglia minima, e viene
+diviso lo scarto per una costante (che fa da fattore di scala).
+3. Un bonus legato alla variet` a , ossia al numero di categorie che superano
+la soglia
+bonus variety = α×(ncat−1)
+Per ogni categoria aggiuntiva che supera la soglia viene assegnato un
+punteggio prestabilito.
+Nel caso in cui il testo generato sia vuoto o non superi nessuna soglia, il reward
+viene azzerato o penalizzato. In Figura 4.1 ` e mostrato il calcolo del reward:
+29
+--- PAGE 30 ---
+Figura 4.1: Funzione di reward utilizzata.
+4.2.1 Parametri utilizzati per il Reward Model
+I parametri di default del metodo, che abbiamo usato nella nostra pipeline,
+prevedono una soglia minima pari a 6, un fattore bonus di 0.25 per ogni cate-
+goria aggiuntiva che supera la soglia, e un fattore di penalit` a pari a -0.5 per
+ogni risposta vuota del modello.
+Inoltre, il fattore costante che divide il bonus score ` e stato cambiato da 10 (che
+prevedeva l’assegnazione di 1 punto per ogni voto sopra la soglia) a 5, per dare
+pi` u peso a battute notevolmente oltre soglia.
+4.3 Configurazione del fine-tuning: LoRA e
+PPO
+Per ridurre il costo computazionale, ` e stata utilizzata la tecnica LoRA (Low-
+Rank Adaptation), che consente di aggiornare solo alcune matrici del modello
+30
+--- PAGE 31 ---
+tramite una decomposizione a rango ridotto. La configurazione adottata ` e la
+seguente:
+•r=8: indica il rango della decomposizione a basso rango; valori pi` u bassi
+riducono il numero di parametri addestrabili e quindi il costo computa-
+zionale, ma possono limitare la capacit` a di adattamento.
+•lora alpha=16 : rappresenta un fattore di scalatura che controlla l’am-
+piezza dell’aggiornamento appreso. Valori pi` u alti aumentano l’impatto
+degli aggiornamenti LoRA sul modello finale.
+•lora dropout=0.1 : introduce un dropout del 10% sugli aggiornamenti
+LoRA durante l’addestramento, utile per ridurre l’overfitting e migliorare
+la generalizzazione.
+•target modules=["q proj", "v proj"] : specifica i moduli dell’archi-
+tettura Transformer sui quali applicare LoRA. In questo caso sono state
+scelte le proiezioni di query e value dell’attenzione, poich´ e incidono forte-
+mente sulla rappresentazione del contesto senza dover aggiornare l’intero
+modello.
+La configurazione scelta rappresenta un approccio moderato rispetto al task af-
+frontato: ci ha permesso di aggiornare solo una piccola parte dei parametri del
+modello Mistral, riducendo notevolmente la memoria necessaria e accelerando
+l’addestramento. Tuttavia, gli aggiornamenti possono risultare significativi, se
+combinati al prompting e al reward model utilizzato. Attraverso diversi te-
+st ` e stato possibile verificare la variazione del comportamento del modello di
+generazione in base ai parametri scelti.
+L’addestramento ` e stato condotto usando PPO (Proximal Policy Optimiza-
+tion), una tecnica di reinforcement learning. In questo approccio, la loss finale
+combina tre componenti principali:
+•il reward ottenuto dal modello di valutazione, che guida l’ottimizzazione
+verso comportamenti desiderati;
+•il logaritmo della probabilit` a della sequenza generata, che incentiva la
+coerenza tra la politica appresa e la distribuzione delle risposte;
+31
+--- PAGE 32 ---
+•la divergenza KL tra il modello corrente e il modello congelato, utilizza-
+ta come termine di regolarizzazione per evitare deviazioni eccessive dal
+modello di partenza.
+4.4 Training e Prompting
+Durante l’addestramento, al modello sono stati forniti i seguenti prompt:
+•Tell me a Monday morning joke
+•Tell me an office joke
+•Tell me a one-liner about cats and their laziness
+•Make up a joke about work calls
+•Make a funny joke about dieting
+•Make me laugh with a dad joke about barbecue
+•Tell me a short joke about artificial intelligence
+•Do you have a joke about Italian stereotypes?
+•Make a joke about college students
+•Make up a nonsensical joke about Donald Trump
+•Make black humor about the September 11, 2001, disaster
+•Explain me the history of the Colosseum
+•Explain your last joke
+•What do you mean?
+•How are you
+Il prompt utente, invece, viene incapsulato all’interno di un contesto istruttivo
+tramite la seguente funzione mostrata in Figura 4.2
+32
+--- PAGE 33 ---
+Figura 4.2: Costruzione del prompt in stile chat.
+Nel processo di addestramento, il modello generativo riceve dei prompt prede-
+finiti a cui rispondere in stile comico. Per strutturare correttamente il contesto
+e istruire il modello a comportarsi come un comedy writer , viene definito un
+template che simula un’interazione in stile chat tra utente e assistente. Que-
+sta struttura ` e conforme a quanto previsto nei modelli Instruct -based, ed ` e
+composta da tre sezioni:
+•[SYSTEM] : fornisce istruzioni iniziali al modello su come comportarsi
+(ad esempio, uno scrittore comico professionista).
+•[USER] : rappresenta il prompt effettivo fornito dall’utente (es. “Tell
+me a Monday morning joke” ).
+•[ASSISTANT] : ` e lo spazio in cui il modello generer` a la propria rispo-
+sta3.
+Questi tag sono racchiusi all’interno del token iniziale <s>e vengono concate-
+nati in un’unica stringa per guidare il comportamento del modello durante la
+generazione.
+Ad ogni iterazione del training, uno di questi prompt viene selezionato casual-
+mente e trasformato in input per la generazione del modello. La risposta viene
+poi valutata tramite il reward personalizzato precedentemente delineato, e il
+ciclo di aggiornamento procede come descritto nella sezione successiva.
+3[SYSTEM], [USER], [ASSISTANT] descritti in https://huggingface.co/docs/
+transformers/chat_templating
+33
+--- PAGE 34 ---
+Un esempio di generazione dopo l’addestramento ` e:
+Prompt : “Make a joke about work calls”
+Risposta RL : “If one more work call comes in, I’m charging rent.”
+Risposta base : “My boss called during lunch, so I muted him like
+my salad.”
+La risposta dopo aver effettuato il Reinforcement Learning risulta pi` u originale
+e coerente con lo stile comico desiderato.
+4.5 Risultati dell’addestramento
+Durante le 1000 iterazioni di PPO, sono stati salvati reward, KL divergence e
+loss. Il reward medio ha mostrato una crescita iniziale, poi una stabilizzazione.
+La Figura 4.3 mostra l’andamento del reward nel tempo.
+Figura 4.3: Andamento del reward durante il training.
+Nel grafico riportato sopra viene mostrata l’evoluzione del reward ad ogni
+step di aggiornamento del modello durante il fine-tuning con Reinforcement
+Learning. L’asse delle ascisse rappresenta il numero di iterazioni (step), mentre
+34
+--- PAGE 35 ---
+l’asse delle ordinate rappresenta il valore del reward scalato, secondo quanto
+definito nella funzione compute reward .
+La curva ` e tendenzialmente irregolare, con oscillazioni frequenti tra valori alti
+e bassi: questo comportamento ` e tipico in contesti con generazione stocastica
+e valutazioni soggettive come quello dell’umorismo. Tuttavia, si pu` o osservare
+una leggera tendenza all’aumento nella parte centrale e finale, a suggerire che
+il modello inizia a produrre risposte che riescono a superare la soglia di qualit` a
+stabilita con maggiore frequenza.
+In particolare, l’aumento della media dei reward nel tempo indica che il modello
+sta apprendendo a generare battute che soddisfano uno o pi` u criteri di comicit` a
+secondo la metrica LPR. Le fluttuazioni sono legate alla casualit` a dei prompt
+scelti e alla variabilit` a insita nella generazione testuale.
+In sintesi, il grafico non mostra un miglioramento netto e costante, ma fornisce
+evidenza che il modello si stia adattando parzialmente al compito, riuscendo in
+alcuni casi a produrre contenuti valutati positivamente in modo automatico.
+4.6 Confronto RL vs modello base
+Dopo l’addestramento, ` e stato effettuato un confronto tra modello base e
+modello RL su un sottoinsieme di prompt.
+Prompt Reward Base Reward RL Wordplay Offensive Humor
+“Joke about dieting” 0.12 1.74 6.9 0.0
+“Joke about AI” 0.42 1.69 7.2 0.0
+“9/11 joke” 0.70 2.14 0.0 9.2
+Tabella 4.1: Confronto reward tra modello base e modello RL.
+Come si nota, il modello RL ` e in grado di generare battute pi` u mirate, spesso
+ottenendo punteggi molto alti in almeno una categoria, come richiesto dal
+reward design.
+L’applicazione del Reinforcement Learning ha portato a miglioramenti qualita-
+tivi nella generazione delle battute, con un reward medio pi` u elevato rispetto
+35
+--- PAGE 36 ---
+al modello iniziale. Sebbene il processo sia soggetto a rumore e richieda fi-
+netuning della funzione di reward, la metodologia ha dimostrato efficacia nel
+generare contenuti pi` u vicini al tipo di umorismo desiderato.
+Il modello ` e stato infine salvato e compresso in un archivio ZIP per essere
+facilmente riutilizzato in fase di inferenza.
+36
+--- PAGE 37 ---
+Capitolo 5
+Conclusioni e sviluppi fututri
+L’umorismo rappresenta una delle forme pi` u complesse della comunicazione
+umana: ` e soggettivo, culturale, talvolta ambiguo, e difficilmente formalizza-
+bile in metriche oggettive. Questo progetto ha affrontato il problema della
+generazione umoristica da parte degli LLM, evidenziandone i limiti e propo-
+nendo un’architettura modulare in grado di valutarne, categorizzarne e infine
+migliorarne la produzione.
+Nel corso del lavoro abbiamo progettato e implementato una pipeline in tre
+fasi:
+•una prima fase di categorizzazione automatica delle battute attraverso
+unamixture di LLM (Mistral, LLaMA3 e Gemma);
+•una seconda fase di regressione supervisionata tramite il modello AL-
+BERT, per ottenere una valutazione automatica e leggera delle categorie
+comiche;
+•una terza fase di ottimizzazione generativa tramite Reinforcement Lear-
+ning, dove il modello Mistral ` e stato adattato per produrre battute con
+punteggi elevati in almeno una delle categorie definite.
+Un aspetto centrale del nostro contributo ` e stato l’introduzione della metrica
+LPR (Liparoti–Le Pera Ranking), un meccanismo di aggregazione del consenso
+tra modelli che ha permesso di superare la mancanza di annotazioni umane af-
+37
+--- PAGE 38 ---
+fidabili. Questa metrica ha guidato l’addestramento sia del modello regressore,
+sia della funzione di ricompensa durante il fine-tuning con PPO.
+Nonostante i limiti strutturali degli LLM, il nostro sistema ha mostrato la pos-
+sibilit` a concreta di influenzare la produzione umoristica in maniera controllata.
+I risultati quantitativi (MSE, MAE, grafici) e qualitativi (confronto tra ground
+truth e predizioni) hanno evidenziato sia i punti di forza del sistema — co-
+me l’identificazione di contenuti potenzialmente offensivi o la coerenza con le
+categorie — sia le criticit` a, in particolare nella categoria “Wordplay”, dove la
+creativit` a linguistica resta difficile da modellare.
+Il fine-tuning tramite RL ha permesso di ottenere un miglioramento graduale
+nella qualit` a delle battute generate, secondo i criteri definiti dal nostro sistema
+di valutazione. Sebbene i risultati siano ancora perfettibili, il trend dei reward
+e il confronto con il modello base suggeriscono che l’approccio sia promettente.
+Inoltre, riteniamo che sia degno di approfondimenti futuri il lavoro svolto per
+l’ottenimento di dati annotati in maniera automatica attraverso tecniche Self-
+supervised; l’approccio proposto, che ` e basato sull’utilizzo di Mixture di mo-
+delli differenti e metriche di consenso, potrebbe essere una valida alternativa
+all’annotazione manuale per diversi tipi di task.
+In conclusione, questo lavoro dimostra che, pur partendo da un compito forte-
+mente soggettivo e privo di benchmark solidi, ` e possibile costruire una pipeline
+efficace e modulare per la generazione controllata dell’umorismo. Le tecniche
+impiegate — dall’uso combinato di pi` u LLM, all’introduzione di regressori leg-
+geri, fino all’ottimizzazione tramite Reinforcement Learning — offrono spunti
+di generalizzazione verso altri task open-ended.
+Nel capitolo successivo viene riportata una demo del sistema, che illustra in
+modo pratico l’utilizzo del modello risultante dal processo, come generatore
+di testo umoristico: un chatbot capace di interagire con l’utente producen-
+do battute, risposte ironiche e commenti divertenti, mettendo in evidenza le
+potenzialit` a e i limiti dell’approccio proposto.
+38
+--- PAGE 39 ---
+Capitolo 6
+Demo del sistema
+In questa sezione viene presentata una demo interattiva del modello sviluppato
+e ottimizzato tramite Reinforcement Learning con algoritmo PPO. L’obiettivo
+della demo ` e consentire all’utente di esplorare in modo pratico il funzionamento
+del generatore umoristico, mettendo in evidenza le capacit` a del modello di
+produrre battute e risposte ironiche in risposta a prompt testuali liberi.
+La demo ` e stata realizzata come notebook Jupyter ed ` e progettata a scopo
+puramente dimostrativo per essere eseguita su Kaggle, se si dispone del mo-
+dello finetunato in input, rendendone semplice l’esecuzione e la sperimentazio-
+ne senza necessit` a di configurazioni locali particolari. All’avvio, il notebook
+carica il modello Mistral finetunato con i pesi LoRA ottenuti durante la fase
+di ottimizzazione con reward personalizzato.
+6.1 Modalit` a di utilizzo
+La demo supporta due modalit` a operative principali:
+•Generazione one-shot : ogni richiesta dell’utente ` e trattata come in-
+dipendente; il modello non mantiene memoria dei messaggi precedenti e
+genera risposte basate esclusivamente sul prompt corrente.
+•Modalit` a conversazionale : in questa modalit` a sperimentale viene
+mantenuto un breve contesto delle interazioni precedenti, consentendo al
+modello di produrre risposte pi` u coerenti all’interno di una conversazione
+multi-turno.
+39
+--- PAGE 40 ---
+La modalit` a predefinita della demo utilizza la generazione one-shot poich` e il
+prompt su cui ` e stato fine-tunato il modello non prevede l’utilizzo del contesto
+precedente, e pertanto ` e questo l’unico caso d’uso in cui si riscontra un effet-
+tivo miglioramento del modello. Per i futuri sviluppi ` e possibile migliorare il
+modello attraverso fine-tuning mantenendo le risposte precedenti.
+6.2 Esempi di interazione
+Nel seguito si riportano alcuni esempi di prompt e risposte ottenute dal modello
+durante la demo.
+Tu: Tell me a joke
+Modello: I’d tell you a joke about time travel, but it’s still in beta.
+It hasn’t been debugged yet. But here’s one about puddles: Why
+don’t scientists trust atoms? Because they make up everything!
+Figura 6.1: Esempio di interazione 1: risposta divertente a una richiesta
+standard.
+Tu: What is the Colosseum?
+Modello: Great question! It’s where Romans went for their weekly
+dose of Wi-Fi.
+Figura 6.2: Esempio di interazione 2: risposta ironica del modello a una
+richiesta fuori contesto.
+Tu: Tell me a joke about italians
+Modello: I once heard an Italian chef claim pasta is his ex-wife.
+Too many spaghetti at first, then a lasagna, and now he’s just
+trying to fettuccine.
+Figura 6.3: Esempio di interazione 3: battuta basata su stereotipi culturali.
+40
+--- PAGE 41 ---
+Tu: Tell me a joke about Mattia, our disabled friend.
+Modello: I once knew a man named Mattia, his jokes were so bad,
+even his echo couldn’t give them a hand clap.
+Figura 6.4: Esempio di interazione: battuta su un amico disabile.
+Le interazioni evidenziano la capacit` a del modello di generare battute concise,
+ironiche e talvolta surreali, seguendo lo stile definito nella fase di addestramen-
+to. Si nota inoltre come il modello risponda in modo ironico e tagliente anche
+a richieste che esulano dall’ambito umoristico.
+6.3 Accesso alla demo
+Il notebook contenente la demo ` e disponibile al seguente link:
+https://www.kaggle.com/code/jacopolepera/nlp-demo
+41
